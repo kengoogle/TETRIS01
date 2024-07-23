@@ -3,14 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>テトリス</title>
+    <title>シンプルモバイルテトリス</title>
     <style>
         body {
-            background-color: #f0f0f0;
             margin: 0;
             padding: 0;
+            background-color: #f0f0f0;
             font-family: Arial, sans-serif;
             touch-action: manipulation;
+            user-select: none;
         }
         #gameContainer {
             position: relative;
@@ -52,9 +53,9 @@
             width: 100%;
             margin-top: 20px;
         }
-        .control-button {
+        .control-btn {
             font-size: 24px;
-            padding: 10px 20px;
+            padding: 15px 30px;
             background-color: #4CAF50;
             color: white;
             border: none;
@@ -71,10 +72,10 @@
             <button id="retryButton">リトライ</button>
         </div>
         <div id="controls">
-            <button class="control-button" id="leftButton">←</button>
-            <button class="control-button" id="rotateButton">↻</button>
-            <button class="control-button" id="rightButton">→</button>
-            <button class="control-button" id="downButton">↓</button>
+            <button id="leftBtn" class="control-btn">←</button>
+            <button id="rotateBtn" class="control-btn">↻</button>
+            <button id="rightBtn" class="control-btn">→</button>
+            <button id="downBtn" class="control-btn">↓</button>
         </div>
     </div>
 
@@ -83,13 +84,13 @@
         const ctx = canvas.getContext('2d');
         const gameOverlay = document.getElementById('gameOverlay');
         const retryButton = document.getElementById('retryButton');
-        const leftButton = document.getElementById('leftButton');
-        const rotateButton = document.getElementById('rotateButton');
-        const rightButton = document.getElementById('rightButton');
-        const downButton = document.getElementById('downButton');
+        const leftBtn = document.getElementById('leftBtn');
+        const rotateBtn = document.getElementById('rotateBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        const downBtn = document.getElementById('downBtn');
 
-        const ROWS = 20;
-        const COLS = 10;
+        let ROWS = 20;
+        let COLS = 10;
         let BLOCK_SIZE;
         const SHAPES = [
             [[1,1,1,1]],
@@ -103,31 +104,36 @@
         const COLORS = ['#00FFFF', '#FFFF00', '#800080', '#00FF00', '#FF0000', '#0000FF', '#FFA500'];
         const CHARACTERS = ['は', 'ら', 'わ', 'た', 'も', 'ち'];
 
-        let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        let board = [];
         let currentPiece = null;
         let gameInterval = null;
         let specialConditionMet = false;
 
         function resizeGame() {
-            const containerWidth = window.innerWidth;
-            const containerHeight = window.innerHeight - document.getElementById('controls').offsetHeight - 40;
-            const gameRatio = ROWS / COLS;
-            const containerRatio = containerHeight / containerWidth;
+            const gameContainer = document.getElementById('gameContainer');
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
 
-            if (containerRatio > gameRatio) {
-                canvas.width = containerWidth * 0.9;
-                canvas.height = canvas.width * gameRatio;
+            const aspectRatio = COLS / ROWS;
+            let canvasWidth, canvasHeight;
+
+            if (containerWidth / containerHeight > aspectRatio) {
+                canvasHeight = containerHeight * 0.7;
+                canvasWidth = canvasHeight * aspectRatio;
             } else {
-                canvas.height = containerHeight * 0.9;
-                canvas.width = canvas.height / gameRatio;
+                canvasWidth = containerWidth * 0.9;
+                canvasHeight = canvasWidth / aspectRatio;
             }
 
-            BLOCK_SIZE = canvas.width / COLS;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            BLOCK_SIZE = Math.floor(canvasWidth / COLS);
+
             draw();
         }
 
         window.addEventListener('resize', resizeGame);
-        resizeGame();
+        window.addEventListener('orientationchange', resizeGame);
 
         class Piece {
             constructor() {
@@ -182,63 +188,17 @@
         }
 
         function drawBlock(x, y, color, character) {
-            const gradient = ctx.createLinearGradient(x * BLOCK_SIZE, y * BLOCK_SIZE, (x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-            gradient.addColorStop(0, color);
-            gradient.addColorStop(1, shadeColor(color, -30));
-
-            ctx.fillStyle = gradient;
+            ctx.fillStyle = color;
             ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
 
-            // Highlight
-            ctx.beginPath();
-            ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
-            ctx.lineTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-            ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-            ctx.fill();
-
-            // Shadow
-            ctx.beginPath();
-            ctx.moveTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
-            ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-            ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-            ctx.fill();
-
-            // Outline
-            ctx.strokeStyle = shadeColor(color, -50);
+            ctx.strokeStyle = '#000';
             ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
 
-            // Character
             ctx.fillStyle = 'black';
             ctx.font = `${BLOCK_SIZE * 0.6}px Arial`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(character, x * BLOCK_SIZE + BLOCK_SIZE / 2, y * BLOCK_SIZE + BLOCK_SIZE / 2);
-        }
-
-        function shadeColor(color, percent) {
-            let R = parseInt(color.substring(1,3),16);
-            let G = parseInt(color.substring(3,5),16);
-            let B = parseInt(color.substring(5,7),16);
-
-            R = Math.floor(R * (100 + percent) / 100);
-            G = Math.floor(G * (100 + percent) / 100);
-            B = Math.floor(B * (100 + percent) / 100);
-
-            R = (R<255)?R:255;  
-            G = (G<255)?G:255;  
-            B = (B<255)?B:255;  
-
-            R = Math.round(R)
-            G = Math.round(G)
-            B = Math.round(B)
-
-            const RR = ((R.toString(16).length==1)?"0"+R.toString(16):R.toString(16));
-            const GG = ((G.toString(16).length==1)?"0"+G.toString(16):G.toString(16));
-            const BB = ((B.toString(16).length==1)?"0"+B.toString(16):B.toString(16));
-
-            return "#"+RR+GG+BB;
         }
 
         function drawBoard() {
@@ -357,83 +317,36 @@
             gameOverlay.style.display = 'flex';
         }
 
-        // タッチ操作とボタン操作の追加
-        function addTouchListeners() {
-            let startX, startY;
+        // タッチ操作の実装
+        leftBtn.addEventListener('touchstart', () => currentPiece && currentPiece.move(-1, 0) && draw());
+        rightBtn.addEventListener('touchstart', () => currentPiece && currentPiece.move(1, 0) && draw());
+        downBtn.addEventListener('touchstart', () => currentPiece && currentPiece.move(0, 1) && draw());
+        rotateBtn.addEventListener('touchstart', () => currentPiece && currentPiece.rotate() && draw());
 
-            canvas.addEventListener('touchstart', (e) => {
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-            });
+        // キーボード操作（デスクトップ用）
+        document.addEventListener('keydown', function(event) {
+            if (!currentPiece) return;
 
-            canvas.addEventListener('touchmove', (e) => {
-                if (!startX || !startY) return;
-
-                let endX = e.touches[0].clientX;
-                let endY = e.touches[0].clientY;
-
-                let diffX = startX - endX;
-                let diffY = startY - endY;
-
-                if (Math.abs(diffX) > Math.abs(diffY)) {
-                    if (diffX > 0) {
-                        currentPiece.move(-1, 0);
-                    } else {
-                        currentPiece.move(1, 0);
-                    }
-                } else {
-                    if (diffY > 0) {
-if (diffY > 0) {
-                        currentPiece.rotate();
-                    } else {
-                        currentPiece.move(0, 1);
-                    }
-                }
-
-                startX = endX;
-                startY = endY;
-
-                e.preventDefault();
-                draw();
-            });
-
-            canvas.addEventListener('touchend', () => {
-                startX = null;
-                startY = null;
-            });
-        }
-
-        leftButton.addEventListener('click', () => {
-            if (currentPiece) {
-                currentPiece.move(-1, 0);
-                draw();
+            switch (event.key) {
+                case 'ArrowLeft':
+                    currentPiece.move(-1, 0);
+                    break;
+                case 'ArrowRight':
+                    currentPiece.move(1, 0);
+                    break;
+                case 'ArrowDown':
+                    currentPiece.move(0, 1);
+                    break;
+                case 'ArrowUp':
+                    currentPiece.rotate();
+                    break;
             }
-        });
-
-        rightButton.addEventListener('click', () => {
-            if (currentPiece) {
-                currentPiece.move(1, 0);
-                draw();
-            }
-        });
-
-        rotateButton.addEventListener('click', () => {
-            if (currentPiece) {
-                currentPiece.rotate();
-                draw();
-            }
-        });
-
-        downButton.addEventListener('click', () => {
-            if (currentPiece) {
-                currentPiece.move(0, 1);
-                draw();
-            }
+            draw();
         });
 
         retryButton.addEventListener('click', startGame);
 
-        addTouchListeners();
+        resizeGame();
         startGame();
     </script>
 </body>
