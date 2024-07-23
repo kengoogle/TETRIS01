@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>テトリス</title>
+    <style>
+        body {
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+        }
+        #gameContainer {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #gameBoard {
+            border: 2px solid #333;
+            background-color: #fff;
+        }
+        #gameOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            display: none;
+        }
+        #retryButton {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 18px;
+            cursor: pointer;
+        }
+        #controls {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .control-button {
+            font-size: 24px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameBoard"></canvas>
+        <div id="gameOverlay">
+            <div id="gameOverMessage">ゲームオーバー</div>
+            <button id="retryButton">リトライ</button>
+        </div>
+        <div id="controls">
+            <button class="control-button" id="leftButton">←</button>
+            <button class="control-button" id="rotateButton">↻</button>
+            <button class="control-button" id="rightButton">→</button>
+            <button class="control-button" id="downButton">↓</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameBoard');
+        const ctx = canvas.getContext('2d');
+        const gameOverlay = document.getElementById('gameOverlay');
+        const retryButton = document.getElementById('retryButton');
+        const leftButton = document.getElementById('leftButton');
+        const rotateButton = document.getElementById('rotateButton');
+        const rightButton = document.getElementById('rightButton');
+        const downButton = document.getElementById('downButton');
+
+        const ROWS = 20;
+        const COLS = 10;
+        let BLOCK_SIZE;
+        const SHAPES = [
+            [[1,1,1,1]],
+            [[1,1],[1,1]],
+            [[1,1,1],[0,1,0]],
+            [[1,1,1],[1,0,0]],
+            [[1,1,1],[0,0,1]],
+            [[1,1,0],[0,1,1]],
+            [[0,1,1],[1,1,0]]
+        ];
+        const COLORS = ['#00FFFF', '#FFFF00', '#800080', '#00FF00', '#FF0000', '#0000FF', '#FFA500'];
+        const CHARACTERS = ['は', 'ら', 'わ', 'た', 'も', 'ち'];
+
+        let board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+        let currentPiece = null;
+        let gameInterval = null;
+        let specialConditionMet = false;
+
+        function resizeGame() {
+            const containerWidth = window.innerWidth;
+            const containerHeight = window.innerHeight - document.getElementById('controls').offsetHeight - 40;
+            const gameRatio = ROWS / COLS;
+            const containerRatio = containerHeight / containerWidth;
+
+            if (containerRatio > gameRatio) {
+                canvas.width = containerWidth * 0.9;
+                canvas.height = canvas.width * gameRatio;
+            } else {
+                canvas.height = containerHeight * 0.9;
+                canvas.width = canvas.height / gameRatio;
+            }
+
+            BLOCK_SIZE = canvas.width / COLS;
+            draw();
+        }
+
+        window.addEventListener('resize', resizeGame);
+        resizeGame();
+
+        class Piece {
+            constructor() {
+                const randomIndex = Math.floor(Math.random() * SHAPES.length);
+                this.shape = SHAPES[randomIndex];
+                this.color = COLORS[randomIndex];
+                this.x = Math.floor(COLS / 2) - Math.floor(this.shape[0].length / 2);
+                this.y = 0;
+                this.characters = this.shape.map(row => row.map(() => CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)]));
+            }
+
+            draw() {
+                this.shape.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value) {
+                            drawBlock(this.x + x, this.y + y, this.color, this.characters[y][x]);
+                        }
+                    });
+                });
+            }
+
+            move(dx, dy) {
+                if (this.canMove(dx, dy)) {
+                    this.x += dx;
+                    this.y += dy;
+                    return true;
+                }
+                return false;
+            }
+
+            rotate() {
+                const rotated = this.shape[0].map((val, index) => this.shape.map(row => row[index]).reverse());
+                const rotatedChars = this.characters[0].map((val, index) => this.characters.map(row => row[index]).reverse());
+                if (this.canMove(0, 0, rotated)) {
+                    this.shape = rotated;
+                    this.characters = rotatedChars;
+                }
+            }
+
+            canMove(dx, dy, shape = this.shape) {
+                return shape.every((row, y) => {
+                    return row.every((value, x) => {
+                        let newX = this.x + x + dx;
+                        let newY = this.y + y + dy;
+                        return (
+                            value === 0 ||
+                            (newX >= 0 && newX < COLS && newY < ROWS && (newY < 0 || board[newY][newX] === 0))
+                        );
+                    });
+                });
+            }
+        }
+
+        function drawBlock(x, y, color, character) {
+            const gradient = ctx.createLinearGradient(x * BLOCK_SIZE, y * BLOCK_SIZE, (x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
+            gradient.addColorStop(0, color);
+            gradient.addColorStop(1, shadeColor(color, -30));
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+            // Highlight
+            ctx.beginPath();
+            ctx.moveTo(x * BLOCK_SIZE, y * BLOCK_SIZE);
+            ctx.lineTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
+            ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fill();
+
+            // Shadow
+            ctx.beginPath();
+            ctx.moveTo((x + 1) * BLOCK_SIZE, y * BLOCK_SIZE);
+            ctx.lineTo((x + 1) * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
+            ctx.lineTo(x * BLOCK_SIZE, (y + 1) * BLOCK_SIZE);
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fill();
+
+            // Outline
+            ctx.strokeStyle = shadeColor(color, -50);
+            ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+            // Character
+            ctx.fillStyle = 'black';
+            ctx.font = `${BLOCK_SIZE * 0.6}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(character, x * BLOCK_SIZE + BLOCK_SIZE / 2, y * BLOCK_SIZE + BLOCK_SIZE / 2);
+        }
+
+        function shadeColor(color, percent) {
+            let R = parseInt(color.substring(1,3),16);
+            let G = parseInt(color.substring(3,5),16);
+            let B = parseInt(color.substring(5,7),16);
+
+            R = Math.floor(R * (100 + percent) / 100);
+            G = Math.floor(G * (100 + percent) / 100);
+            B = Math.floor(B * (100 + percent) / 100);
+
+            R = (R<255)?R:255;  
+            G = (G<255)?G:255;  
+            B = (B<255)?B:255;  
+
+            R = Math.round(R)
+            G = Math.round(G)
+            B = Math.round(B)
+
+            const RR = ((R.toString(16).length==1)?"0"+R.toString(16):R.toString(16));
+            const GG = ((G.toString(16).length==1)?"0"+G.toString(16):G.toString(16));
+            const BB = ((B.toString(16).length==1)?"0"+B.toString(16):B.toString(16));
+
+            return "#"+RR+GG+BB;
+        }
+
+        function drawBoard() {
+            board.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        drawBlock(x, y, value.color, value.character);
+                    } else {
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                        ctx.strokeStyle = '#EEEEEE';
+                        ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+                    }
+                });
+            });
+        }
+
+        function mergePiece() {
+            currentPiece.shape.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value) {
+                        board[currentPiece.y + y][currentPiece.x + x] = {
+                            color: currentPiece.color,
+                            character: currentPiece.characters[y][x]
+                        };
+                    }
+                });
+            });
+        }
+
+        function clearLines() {
+            for (let y = ROWS - 1; y >= 0; y--) {
+                if (board[y].every(cell => cell !== 0)) {
+                    board.splice(y, 1);
+                    board.unshift(Array(COLS).fill(0));
+                    y++;
+                }
+            }
+        }
+
+        function checkSpecialCondition() {
+            const targetStrings = ['はらわたもち', 'ちもたわらは'];
+            
+            // 横方向のチェック
+            for (let y = 0; y < ROWS; y++) {
+                let rowString = board[y].map(cell => cell ? cell.character : '').join('');
+                if (targetStrings.some(target => rowString.includes(target))) {
+                    return true;
+                }
+            }
+            
+            // 縦方向のチェック
+            for (let x = 0; x < COLS; x++) {
+                let colString = board.map(row => row[x] ? row[x].character : '').join('');
+                if (targetStrings.some(target => colString.includes(target))) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+
+        function isGameOver() {
+            return board[0].some(cell => cell !== 0);
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBoard();
+            if (currentPiece) {
+                currentPiece.draw();
+            }
+        }
+
+        function gameLoop() {
+            if (!currentPiece) {
+                currentPiece = new Piece();
+                if (!currentPiece.canMove(0, 0)) {
+                    endGame();
+                    return;
+                }
+            }
+
+            if (!currentPiece.move(0, 1)) {
+                mergePiece();
+                clearLines();
+                currentPiece = null;
+
+                if (checkSpecialCondition() && !specialConditionMet) {
+                    specialConditionMet = true;
+                    setTimeout(() => {
+                        alert('おめでとう！');
+                        window.location.href = 'https://youtu.be/GEeahvo8_OY';
+                    }, 100);
+                }
+            }
+
+            draw();
+        }
+
+        function startGame() {
+            board = Array(ROWS).fill().map(() => Array(COLS).fill(0));
+            currentPiece = null;
+            gameOverlay.style.display = 'none';
+            specialConditionMet = false;
+            if (gameInterval) {
+                clearInterval(gameInterval);
+            }
+            gameInterval = setInterval(gameLoop, 500);
+            draw();
+        }
+
+        function endGame() {
+            clearInterval(gameInterval);
+            gameInterval = null;
+            gameOverlay.style.display = 'flex';
+        }
+
+        // タッチ操作とボタン操作の追加
+        function addTouchListeners() {
+            let startX, startY;
+
+            canvas.addEventListener('touchstart', (e) => {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            });
+
+            canvas.addEventListener('touchmove', (e) => {
+                if (!startX || !startY) return;
+
+                let endX = e.touches[0].clientX;
+                let endY = e.touches[0].clientY;
+
+                let diffX = startX - endX;
+                let diffY = startY - endY;
+
+                if (Math.abs(diffX) > Math.abs(diffY)) {
+                    if (diffX > 0) {
+                        currentPiece.move(-1, 0);
+                    } else {
+                        currentPiece.move(1, 0);
+                    }
+                } else {
+                    if (diffY > 0) {
+if (diffY > 0) {
+                        currentPiece.rotate();
+                    } else {
+                        currentPiece.move(0, 1);
+                    }
+                }
+
+                startX = endX;
+                startY = endY;
+
+                e.preventDefault();
+                draw();
+            });
+
+            canvas.addEventListener('touchend', () => {
+                startX = null;
+                startY = null;
+            });
+        }
+
+        leftButton.addEventListener('click', () => {
+            if (currentPiece) {
+                currentPiece.move(-1, 0);
+                draw();
+            }
+        });
+
+        rightButton.addEventListener('click', () => {
+            if (currentPiece) {
+                currentPiece.move(1, 0);
+                draw();
+            }
+        });
+
+        rotateButton.addEventListener('click', () => {
+            if (currentPiece) {
+                currentPiece.rotate();
+                draw();
+            }
+        });
+
+        downButton.addEventListener('click', () => {
+            if (currentPiece) {
+                currentPiece.move(0, 1);
+                draw();
+            }
+        });
+
+        retryButton.addEventListener('click', startGame);
+
+        addTouchListeners();
+        startGame();
+    </script>
+</body>
+</html>
