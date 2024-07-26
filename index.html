@@ -102,7 +102,7 @@
             [[0,1,1],[1,1,0]]
         ];
         const COLORS = ['#00FFFF', '#FFFF00', '#800080', '#00FF00', '#FF0000', '#0000FF', '#FFA500'];
-        const CHARACTERS = ['は', 'ら', 'い', 'た', 'ま', 'え'];
+        const CHARACTERS = ['は', 'ら', 'わ', 'た', 'も', 'ち'];
 
         let board = [];
         let currentPiece = null;
@@ -240,7 +240,7 @@
         }
 
         function checkSpecialCondition() {
-            const targetStrings = ['はらいたまえ', 'えまたいらは'];
+            const targetStrings = ['はらわたもち', 'ちもたわらは'];
             
             // 横方向のチェック
             for (let y = 0; y < ROWS; y++) {
